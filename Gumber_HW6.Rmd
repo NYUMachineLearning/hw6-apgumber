@@ -1,0 +1,154 @@
+---
+title: "HW6_SVM"
+author: "Alisha Gumber"
+date: "11/21/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load relevant libraries, include=FALSE}
+library(tidyverse)
+library(mlbench)
+library(caret)
+library(pROC)
+library(randomForest)
+```
+
+
+##Homework
+
+1. Choose an appropriate machine learning dataset and use SVM with two different kernels. Campare the results. 
+
+## First kernel: Linear
+
+**I'm using the Pima Indian Diabetes dataset to predict diabetes status using SVM (Support Vector Machine) method.**
+
+```{r}
+data("PimaIndiansDiabetes")
+#View(PimaIndiansDiabetes)
+
+# Split data into training and testing
+train_size = floor(0.75 * nrow(PimaIndiansDiabetes))
+train_pos <- sample(seq_len(nrow(PimaIndiansDiabetes)), size = train_size)
+
+train_data <- PimaIndiansDiabetes[train_pos, ]
+test_data <- PimaIndiansDiabetes[-train_pos, ]
+```
+
+
+Train Model
+
+```{r}
+# Set seed for reproducible results
+# Use trainControl function to do repeated 10-fold cross-validation, repeated 5 times
+set.seed(115)
+control_pima = trainControl(method = "repeatedcv", repeats = 5, classProbs = T, savePredictions = T)
+
+# Train SVM model (method = "svmLinear) to predict diabetes status using all features. 
+# Predictor variable is diabetes - pos or neg
+# Using linear kernel
+set.seed(115)
+svm_pima = train(diabetes ~ .,  data = train_data, method = "svmLinear", tuneLength = 10, trControl = control_pima)
+svm_pima
+```
+
+ROC curve and AUC
+```{r}
+set.seed(115)
+# Plot ROC curve with AUC results
+plot(x = roc(predictor = svm_pima$pred$pos, response = svm_pima$pred$obs)$specificities, y = roc(predictor = svm_pima$pred$pos, response = svm_pima$pred$obs)$sensitivities, col= "blue", xlim = c(1, 0), type ="l", ylab = "Sensitivity", xlab = "Specificity")
+
+legend("bottomright", legend = paste("Positive v Negative Diabetes Status --", 
+                                     roc(predictor = svm_pima$pred$pos,
+                                         response = svm_pima$pred$obs)$auc
+, sep = ""), col = c("blue"), fill = c("blue"))
+
+```
+
+**AUC for prediciting diabetes status with SVM method with linear kernel is 0.833.**
+
+
+Perform model on test set and make confusion matrix
+```{r}
+svm_pimatest = predict(svm_pima, newdata = test_data)
+confusionMatrix(svm_pimatest, reference = test_data$diabetes)
+```
+
+
+## Second kernel: Radial
+
+Train Model 
+```{r}
+set.seed(115)
+control_pima = trainControl(method = "repeatedcv", repeats = 5, classProbs = T, savePredictions = T)
+
+# Train SVM model (method = "svmPoly") to predict diabetes status using all features. 
+# Predictor variable is diabetes - pos or neg
+# Using linear kernel
+set.seed(115)
+svm_pima_rad = train(diabetes ~ .,  data = train_data, method = "svmRadial", tuneLength = 10, trControl = control_pima)
+svm_pima_rad
+```
+
+
+Plot ROC and AUC
+
+```{r}
+set.seed(115)
+# Plot ROC curve with AUC results
+plot(x = roc(predictor = svm_pima_rad$pred$pos, response = svm_pima_rad$pred$obs)$specificities, y = roc(predictor = svm_pima_rad$pred$pos, response = svm_pima_rad$pred$obs)$sensitivities, col= "blue", xlim = c(1, 0), type ="l", ylab = "Sensitivity", xlab = "Specificity")
+
+legend("bottomright", legend = paste("Positive v Negative Diabetes Status --", 
+                                     roc(predictor = svm_pima_rad$pred$pos,
+                                         response = svm_pima_rad$pred$obs)$auc
+, sep = ""), col = c("blue"), fill = c("blue"))
+```
+
+
+**The AUC for prediciting diabetes status with a SVM model and radial kernel is around 0.794. The linear kernel method performs better on this dataset. In general, from what I have read about kernels, it's best to use linear kernels for linear datasets, and radial kernels on nonlinear datasets.**
+
+
+## Feature Selection
+
+2. Attempt using SVM after using a previously covered feature selection method. Do the results improve? Explain. 
+**I'm using random forest as my method of feature selection.**
+
+```{r}
+# Random forest for feature selection: 
+# Fit a random forest model with randomForest function, using diabetes as response variable and all the features as predictor variables.
+rf.feature.selec = randomForest(diabetes ~ ., data=train_data,  importance = TRUE, oob.times = 15, confusion = TRUE)
+rf.feature.selec
+
+# Using the importance function, rank features based on importance 
+importance(rf.feature.selec)
+```
+
+**The mean decrease in accuracy and the mean decrease in Gini can measure the importance of the variable. The higher the variable, the more important the variable. Here we see that glucose is the most important variable for diabetes prediction, as it has the highest mean decrease in accuracy and Gini. The variables that could be considered the least important are triceps and insulin. I'll remove these features from the SVM model and see if it performs better.**
+
+
+SVM with feature selection
+
+```{r}
+set.seed(115)
+control_pima_fs = trainControl(method = "repeatedcv", repeats = 5, classProbs = T, savePredictions = T)
+
+set.seed(115)
+# Using the svmLinear method since it performed better than svmRadial.
+svm_pima_fs = train(diabetes ~ pregnant + glucose + pressure + mass + pedigree + age,  data = train_data, method = "svmLinear", tuneLength = 10, trControl = control_pima_fs)
+
+svm_pima_fs
+
+plot(x = roc(predictor = svm_pima_fs$pred$pos, response = svm_pima_fs$pred$obs)$specificities, y = roc(predictor = svm_pima_fs$pred$pos, response = svm_pima_fs$pred$obs)$sensitivities, col= "blue", xlim = c(1, 0), type ="l", ylab = "Sensitivity", xlab = "Specificity")
+legend("bottomright", legend = paste("Positive v Negative Diabetes Status --", 
+                                     roc(predictor = svm_pima_fs$pred$pos,
+                                         response = svm_pima_fs$pred$obs)$auc
+, sep = ""), col = c("blue"), fill = c("blue"))
+```
+
+**I tried setting the seed before each trainControl to get reproducible results, but the results have been changing very slightly every time I run it. The first SVM model using all features as predictors performed with an AUC of 0.833 (or around this). It increased very slightly to 0.836 after doing feature selection and removing two features from the model. So the results didn't really improve significantly. I also tried removing just one feature (insulin), and then removing three features (insulin, triceps, and pressure), but the model maintained an AUC around 0.833. The reason why the results didn't really improve with feature selection could be due to the fact that there weren't very many features to begin with, so maybe there is no need for feature selection with this dataset.**
+
+
+
